@@ -3,6 +3,7 @@
  *
  *  Created on: Dec 12, 2016
  *      Author: Tiffany Huang
+ * 		Project: Tom Jacobs
  */
 
 #include <random>
@@ -28,9 +29,9 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 	default_random_engine gen;
 
 	// Create a Gaussian distribution for x, y
-	normal_distribution<double> dist_x(x, std[0]);
-	normal_distribution<double> dist_y(y, std[1]);
-	normal_distribution<double> dist_theta(theta, std[2]);
+	normal_distribution<double> dist_x(0, std[0]);
+	normal_distribution<double> dist_y(0, std[1]);
+	normal_distribution<double> dist_theta(0, std[2]);
 
 	// Initialize all particles to first position (based on estimates of 
 	// x, y, theta and their uncertainties from GPS) and all weights to 1. 
@@ -38,9 +39,9 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 
 		// Add random Gaussian noise to each particle
 		Particle p;
-		p.x = dist_x(gen);
-		p.y = dist_y(gen);
-//		p.theta = dist_theta(theta);
+		p.x = x + dist_x(gen);
+		p.y = y + dist_y(gen);
+		p.theta = theta + dist_theta(gen);
 		p.weight = 1;
 		p.id = i;
 
@@ -80,11 +81,34 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 }
 
 void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::vector<LandmarkObs>& observations) {
-	// TODO: Find the predicted measurement that is closest to each observed measurement and assign the 
-	//   observed measurement to this particular landmark.
-	// NOTE: this method will NOT be called by the grading code. But you will probably find it useful to 
-	//   implement this method and use it as a helper during the updateWeights phase.
+	// Find the predicted measurement that is closest to each observed measurement and assign the 
+	// observed measurement to this particular landmark.
 
+	// For each observation
+	for (int i = 0; i < observations.size(); i++) {
+
+		// Look at this observation
+		LandmarkObs o = observations[i];
+
+		// Reset
+		double min_distance = numeric_limits<double>::max();
+		int map_id = -1;
+
+		for (unsigned int j = 0; j < predicted.size(); j++) {
+			// This prediction
+			LandmarkObs p = predicted[j];
+
+			// Distance between current and predicted landmarks
+			double distance = dist(o.x, o.y, p.x, p.y);
+
+			// Find closest predicted
+			if (distance < min_distance) {
+				min_distance = distance;
+				map_id = p.id;
+			}
+		}
+		observations[i].id = map_id;
+	}
 }
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 

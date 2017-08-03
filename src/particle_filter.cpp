@@ -180,8 +180,35 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 
 void ParticleFilter::resample() {
 	// Resample particles with replacement with probability proportional to their weight. 
+	vector<Particle> new_particles;
 
+	// Get those weights into a vector
+	vector<double> weights;
+	for (int i = 0; i < num_particles; i++) {
+		weights.push_back(particles[i].weight);
+	}
 
+	// Make some ints
+	uniform_int_distribution<int> uniintdist(0, num_particles-1);
+	auto index = uniintdist(gen);
+
+	// Get the max of the weights
+	double max_weight = *max_element(weights.begin(), weights.end());
+
+	// Make a distribution from 0 to max
+	uniform_real_distribution<double> unirealdist(0.0, max_weight);
+
+	// Go through the particles
+	double beta = 0.0;
+	for (int i = 0; i < num_particles; i++) {
+		beta += unirealdist(gen) * 2.0;
+		while (beta > weights[index]) {
+			beta -= weights[index];
+			index = (index + 1) % num_particles;
+		}
+		new_particles.push_back(particles[index]);
+	}
+	particles = new_particles;
 }
 
 Particle ParticleFilter::SetAssociations(Particle particle, std::vector<int> associations, std::vector<double> sense_x, std::vector<double> sense_y)

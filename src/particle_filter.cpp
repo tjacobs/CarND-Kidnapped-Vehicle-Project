@@ -20,13 +20,14 @@
 
 using namespace std;
 
+// Generator
+default_random_engine gen;
+
 void ParticleFilter::init(double x, double y, double theta, double std[]) {
 
 	// Set the number of particles.
 	num_particles = 100;
 
-	// Generator
-	default_random_engine gen;
 
 	// Create a Gaussian distribution for x, y
 	normal_distribution<double> dist_x(0, std[0]);
@@ -54,7 +55,6 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 void ParticleFilter::prediction(double delta_t, double std_pos[], double velocity, double yaw_rate) {
 
 	// Bring the noise
-	default_random_engine gen;
 	normal_distribution<double> dist_x(0, std_pos[0]);
 	normal_distribution<double> dist_y(0, std_pos[1]);
 	normal_distribution<double> dist_yaw(0, std_pos[2]);
@@ -91,7 +91,7 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
 		LandmarkObs o = observations[i];
 
 		// Reset
-		double min_distance = numeric_limits<double>::max();
+		double min_distance = INFINITY;
 		int map_id = -1;
 
 		for (unsigned int j = 0; j < predicted.size(); j++) {
@@ -112,39 +112,91 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
 }
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
-		std::vector<LandmarkObs> observations, Map map_landmarks) {
-	// TODO: Update the weights of each particle using a mult-variate Gaussian distribution. You can read
-	//   more about this distribution here: https://en.wikipedia.org/wiki/Multivariate_normal_distribution
-	// NOTE: The observations are given in the VEHICLE'S coordinate system. Your particles are located
-	//   according to the MAP'S coordinate system. You will need to transform between the two systems.
-	//   Keep in mind that this transformation requires both rotation AND translation (but no scaling).
-	//   The following is a good resource for the theory:
-	//   https://www.willamette.edu/~gorr/classes/GeneralGraphics/Transforms/transforms2d.htm
-	//   and the following is a good resource for the actual equation to implement (look at equation 
-	//   3.33
-	//   http://planning.cs.uiuc.edu/node99.html
+	 std::vector<LandmarkObs> observations, Map map_landmarks) {
+
+	// Update the weights of each particle using a multi-variate Gaussian distribution.
+	for (int i = 0; i < num_particles; i++) {
+
+		// Get particle
+		double p_x = particles[i].x;
+		double p_y = particles[i].y;
+		double p_theta = particles[i].theta;
+
+		// Predictions
+		vector<LandmarkObs> predictions;
+
+		// Go through each landmark
+		for (int j = 0; j < map_landmarks.landmark_list.size(); j++) {
+
+			// Get landmark
+			float landmark_x = map_landmarks.landmark_list[j].x_f;
+			float landmark_y = map_landmarks.landmark_list[j].y_f;
+			int   landmark_id = map_landmarks.landmark_list[j].id_i;
+
+			// In sensor range?
+			if (fabs(landmark_x - p_x) <= sensor_range && fabs(landmark_y - p_y) <= sensor_range) {
+				// Add prediction
+				predictions.push_back(LandmarkObs{ landmark_id, landmark_x, landmark_y });
+			}
+	    }
+
+		// Transform observations into map space
+		vector<LandmarkObs> transformed_observations;
+		for (int j = 0; j < observations.size(); j++) {
+			double transformed_x = cos(p_theta) * observations[j].x - sin(p_theta) * observations[j].y + p_x;
+			double transformed_y = sin(p_theta) * observations[j].x + cos(p_theta) * observations[j].y + p_y;
+			transformed_observations.push_back(LandmarkObs{ observations[j].id, transformed_x, transformed_y });
+		}
+
+		// Find each particle
+		dataAssociation(predictions, transformed_observations);
+	    particles[i].weight = 1.0;
+		for (int j = 0; j < transformed_observations.size(); j++) {
+	      
+	        // Get observed
+			double o_x, o_y, pr_x, pr_y;
+			o_x = transformed_observations[j].x;
+			o_y = transformed_observations[j].y;
+			int associated_prediction = transformed_observations[j].id;
+
+			// Find
+			for (unsigned int k = 0; k < predictions.size(); k++) {
+				if (predictions[k].id == associated_prediction) {
+					pr_x = predictions[k].x;
+					pr_y = predictions[k].y;
+				}
+			}
+
+			// Update weight
+			double s_x = std_landmark[0];
+			double s_y = std_landmark[1];
+			double obs_w = ( 1/( 2 * M_PI * s_x * s_y) )
+							* exp( -(pow(pr_x - o_x, 2) / (2 * pow(s_x, 2) ) 
+								   +(pow(pr_y - o_y, 2) / (2 * pow(s_y, 2) ) ) ) );
+	    	particles[i].weight *= obs_w;
+		}
+  	}
 }
 
 void ParticleFilter::resample() {
-	// TODO: Resample particles with replacement with probability proportional to their weight. 
-	// NOTE: You may find std::discrete_distribution helpful here.
-	//   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
+	// Resample particles with replacement with probability proportional to their weight. 
+
 
 }
 
 Particle ParticleFilter::SetAssociations(Particle particle, std::vector<int> associations, std::vector<double> sense_x, std::vector<double> sense_y)
 {
-	//particle: the particle to assign each listed association, and association's (x,y) world coordinates mapping to
+	// particle: the particle to assign each listed association, and association's (x,y) world coordinates mapping to
 	// associations: The landmark id that goes along with each listed association
 	// sense_x: the associations x mapping already converted to world coordinates
 	// sense_y: the associations y mapping already converted to world coordinates
 
-	//Clear the previous associations
+	// Clear the previous associations
 	particle.associations.clear();
 	particle.sense_x.clear();
 	particle.sense_y.clear();
 
-	particle.associations= associations;
+	particle.associations = associations;
  	particle.sense_x = sense_x;
  	particle.sense_y = sense_y;
 
@@ -160,6 +212,7 @@ string ParticleFilter::getAssociations(Particle best)
     s = s.substr(0, s.length()-1);  // get rid of the trailing space
     return s;
 }
+
 string ParticleFilter::getSenseX(Particle best)
 {
 	vector<double> v = best.sense_x;
@@ -169,6 +222,7 @@ string ParticleFilter::getSenseX(Particle best)
     s = s.substr(0, s.length()-1);  // get rid of the trailing space
     return s;
 }
+
 string ParticleFilter::getSenseY(Particle best)
 {
 	vector<double> v = best.sense_y;

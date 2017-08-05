@@ -26,18 +26,18 @@ default_random_engine gen;
 void ParticleFilter::init(double x, double y, double theta, double std[]) {
 
 	// Create random distributions
-	normal_distribution<double> x_rand(0, std[0]);
-	normal_distribution<double> y_rand(0, std[1]);
-	normal_distribution<double> theta_rand(0, std[2]);
+	normal_distribution<double> x_rand(x, std[0]);
+	normal_distribution<double> y_rand(y, std[1]);
+	normal_distribution<double> theta_rand(theta, std[2]);
 
 	// Create 100 particles
 	num_particles = 100;
 	for(int i = 0; i < num_particles; i++) {
 		Particle p;
 		p.id = i;
-		p.x = x + x_rand(gen);
-		p.y = y + y_rand(gen);
-		p.theta = theta + theta_rand(gen);
+		p.x = x_rand(gen);
+		p.y = y_rand(gen);
+		p.theta = theta_rand(gen);
 		p.weight = 1.0;
 		particles.push_back(p);
 	}
@@ -79,27 +79,31 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
 	// For each observation
 	for (int i = 0; i < observations.size(); i++) {
 
-		// Look at this observation
+		// Get this observation
 		LandmarkObs o = observations[i];
 
 		// Reset
 		double min_distance = INFINITY;
-		int map_id = -1;
+		int predicted_id = -1;
 
-		for (unsigned int j = 0; j < predicted.size(); j++) {
-			// This prediction
+		// Go through predictions, find closest to this observation
+		for (int j = 0; j < predicted.size(); j++) {
+
+			// Get this prediction
 			LandmarkObs p = predicted[j];
 
-			// Distance between current and predicted landmarks
+			// Calculate distance between current and predicted landmarks
 			double distance = dist(o.x, o.y, p.x, p.y);
 
 			// Find closest predicted
 			if (distance < min_distance) {
 				min_distance = distance;
-				map_id = p.id;
+				predicted_id = p.id;
 			}
 		}
-		observations[i].id = map_id;
+
+		// Assign this prediction to the observation
+		observations[i].id = predicted_id;
 	}
 }
 
@@ -180,34 +184,33 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 
 void ParticleFilter::resample() {
 	// Resample particles with replacement with probability proportional to their weight. 
-	vector<Particle> new_particles;
 
-	// Get those weights into a vector
+	// Put all the weights into a vector
 	vector<double> weights;
 	for (int i = 0; i < num_particles; i++) {
 		weights.push_back(particles[i].weight);
 	}
 
-	// Make some ints
-	uniform_int_distribution<int> uniintdist(0, num_particles-1);
-	auto index = uniintdist(gen);
+	// Go around the wheel (vector) of weights and resample our particles
+	vector<Particle> new_particles;
+	vector<double> new_weights;
+	random_device rd;
+	mt19937 gen(rd());
+	discrete_distribution<> d(weights.begin(), weights.end());
+	for (int i = 0; i<num_particles; i++) {
 
-	// Get the max of the weights
-	double max_weight = *max_element(weights.begin(), weights.end());
-
-	// Make a distribution from 0 to max
-	uniform_real_distribution<double> unirealdist(0.0, max_weight);
-
-	// Go through the particles
-	double beta = 0.0;
-	for (int i = 0; i < num_particles; i++) {
-		beta += unirealdist(gen) * 2.0;
-		while (beta > weights[index]) {
-			beta -= weights[index];
-			index = (index + 1) % num_particles;
-		}
-		new_particles.push_back(particles[index]);
+		// Pick an index, make a new particle with same x, y, theta, weight 1.
+	 	int index = d(gen);
+		Particle p;
+		p.id = i;
+		p.x = particles[index].x;
+		p.y = particles[index].y;
+		p.theta = particles[index].theta;
+		p.weight = 1.0;
+		new_particles.push_back(p);
 	}
+	
+	// Assign
 	particles = new_particles;
 }
 
